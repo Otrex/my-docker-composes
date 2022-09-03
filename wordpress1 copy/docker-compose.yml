@@ -1,0 +1,79 @@
+version: "3"
+
+services:
+  nginx:
+    image: docker.io/nginx:alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - ${WORDPRESS_PORT}:8000
+      - ${PHPMYADMIN_PORT}:8001
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./wordpress:/var/www/html:ro
+      - phpmyadmin:/var/www/phpmyadmin:ro
+      - ./dhparams:/etc/nginx/dhparams
+      - ./certbot/conf:/etc/nginx/ssl
+      - ./certbot/data:/usr/share/nginx/html/letsencrypt
+
+  certbot:
+    image: certbot/certbot:latest
+    command: certonly --webroot --webroot-path=/usr/share/nginx/html/letsencrypt --email obisiket@gmail.com --agree-tos --no-eff-email -d obisiket@gmail.com
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/logs:/vars/logs/letsencrypt
+      - ./certbot/data:/usr/share/nginx/html/letsencrypt
+
+
+  wordpress:
+    image: docker.io/wordpress:fpm-alpine
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - mariadb
+    environment:
+      WORDPRESS_DB_HOST: mariadb
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+    volumes:
+      - ./wordpress:/var/www/html
+
+  ftp:
+    image: docker.io/delfer/alpine-ftp-server
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - wordpress
+    environment:
+      USERS: "${FTP_USER}|${FTP_PASSWORD}|/var/www/html/wp-content"
+      ADDRESS: ftp
+    volumes:
+      - ./wordpress:/var/www/html
+
+  mariadb:
+    image: ghcr.io/linuxserver/mariadb:alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./mariadb:/config/databases
+
+  phpmyadmin:
+    image: docker.io/phpmyadmin:fpm-alpine
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - mariadb
+    volumes:
+      - phpmyadmin:/var/www/html
+    environment:
+      PMA_HOST: mariadb
+
+volumes:
+    phpmyadmin:
